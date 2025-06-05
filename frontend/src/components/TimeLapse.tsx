@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PlayIcon, PauseIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { ImageData } from '@/types';
 import { getImages, getImageStream } from '@/lib/api';
 import { format } from 'date-fns';
+import Image from 'next/image';
 
 export default function TimeLapse() {
   const [mounted, setMounted] = useState(false);
@@ -31,7 +32,7 @@ export default function TimeLapse() {
         if (data.length > 0) {
           setSelectedImage(data[0]);
         }
-      } catch (err) {
+      } catch {
         setError('Failed to fetch images');
       }
     };
@@ -48,8 +49,8 @@ export default function TimeLapse() {
           const blob = await getImageStream(image.id);
           const url = URL.createObjectURL(blob);
           setImageBlobs(prev => ({ ...prev, [image.id]: url }));
-        } catch (err) {
-          console.error(`Failed to load image ${image.id}:`, err);
+        } catch (error) {
+          console.error(`Failed to load image ${image.id}:`, error);
         }
       }
     };
@@ -91,7 +92,7 @@ export default function TimeLapse() {
     };
   }, [isPlaying, images, mounted]);
 
-  const scrollToThumbnail = (index: number) => {
+  const scrollToThumbnail = useCallback((index: number) => {
     if (!mounted || !scrollContainerRef.current) return;
     const container = scrollContainerRef.current;
     const thumbnail = container.children[index] as HTMLElement;
@@ -99,12 +100,12 @@ export default function TimeLapse() {
       const scrollLeft = thumbnail.offsetLeft - container.clientWidth / 2 + thumbnail.clientWidth / 2;
       container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
     }
-  };
+  }, [mounted]);
 
   useEffect(() => {
     if (!mounted) return;
     scrollToThumbnail(currentIndex);
-  }, [currentIndex, mounted]);
+  }, [currentIndex, mounted, scrollToThumbnail]);
 
   const handlePrevious = () => {
     setIsPlaying(false);
@@ -162,16 +163,23 @@ export default function TimeLapse() {
       <div className="relative aspect-video mb-6 bg-black rounded-lg overflow-hidden">
         <AnimatePresence mode="wait">
           {selectedImage && imageBlobs[selectedImage.id] && (
-            <motion.img
+            <motion.div
               key={selectedImage.id}
-              src={imageBlobs[selectedImage.id]}
-              alt={`Plant at ${selectedImage.timestamp}`}
-              className="w-full h-full object-contain"
+              className="w-full h-full relative"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-            />
+            >
+              <Image
+                src={imageBlobs[selectedImage.id]}
+                alt={`Plant at ${selectedImage.timestamp}`}
+                className="object-contain"
+                fill
+                unoptimized
+                priority
+              />
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -234,10 +242,13 @@ export default function TimeLapse() {
               }`}
             >
               {imageBlobs[image.id] && (
-                <img
+                <Image
                   src={imageBlobs[image.id]}
                   alt={`Thumbnail ${index + 1}`}
                   className="w-full h-full object-cover rounded-md"
+                  width={96}
+                  height={54}
+                  unoptimized
                 />
               )}
               <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-10 transition-opacity" />

@@ -20,7 +20,7 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <header className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900">SelfHydro Tomato Monitor</h1>
-          <p className="text-gray-600">Track your plant's growth and environmental conditions</p>
+          <p className="text-gray-600">Track your plant&apos;s growth and environmental conditions</p>
         </header>
 
         <Tab.Group>

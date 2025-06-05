@@ -10,7 +10,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
 
 export default function SensorDisplay() {
@@ -27,7 +26,7 @@ export default function SensorDisplay() {
         ]);
         setCurrentData(current);
         setHistoricalData(history);
-      } catch (err) {
+      } catch {
         setError('Failed to fetch sensor data');
       }
     };
