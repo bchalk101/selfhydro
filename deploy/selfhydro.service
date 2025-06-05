@@ -1,0 +1,21 @@
+[Unit]
+Description=SelfHydro Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=base
+Group=base
+WorkingDirectory=/home/base/selfhydro
+Environment=RUST_LOG=info
+Environment=GOOGLE_APPLICATION_CREDENTIALS=/home/base/selfhydro/credentials.json
+EnvironmentFile=/home/base/selfhydro/.env
+ExecStartPre=/usr/bin/test -x /home/base/selfhydro/bin/selfhydro-monitor
+ExecStart=/home/base/selfhydro/bin/selfhydro-monitor
+Restart=always
+RestartSec=10
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target 

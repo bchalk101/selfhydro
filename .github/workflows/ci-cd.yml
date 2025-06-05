@@ -1,0 +1,99 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./api_service
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov
+        pip install -r requirements.txt
+    
+    - name: Run tests
+      run: pytest
+
+  test-and-deploy-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: './frontend/package-lock.json'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linting
+      run: npm run lint
+    
+    - name: Build
+      run: npm run build
+      env:
+        NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+    
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main'
+      uses: JamesIves/github-pages-deploy-action@v4
+      with:
+        folder: frontend/.next
+        branch: gh-pages
+        clean: true
+
+  deploy-api:
+    needs: test-api
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./api_service
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        export_default_credentials: true
+    
+    - name: Build and push Docker image
+      run: |
+        gcloud auth configure-docker
+        docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/selfhydro-api:${{ github.sha }} .
+        docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/selfhydro-api:${{ github.sha }}
+    
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy selfhydro-api \
+          --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/selfhydro-api:${{ github.sha }} \
+          --platform managed \
+          --region us-central1 \
+          --allow-unauthenticated 

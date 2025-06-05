@@ -1,0 +1,29 @@
+[package]
+name = "selfhydro-camera"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "selfhydro_camera"
+path = "src/lib.rs"
+
+[[bin]]
+name = "selfhydro-camera"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+env_logger.workspace = true
+dotenv.workspace = true
+google-cloud-storage.workspace = true
+google-cloud-default.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+mockall.workspace = true
+tokio-test.workspace = true 

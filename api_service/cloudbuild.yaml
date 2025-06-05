@@ -1,0 +1,35 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/selfhydro-api', '.']
+    dir: 'api_service'
+
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/selfhydro-api']
+
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'selfhydro-api'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/selfhydro-api'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'GCS_BUCKET=${_GCS_BUCKET},BASE_URL=${_BASE_URL},SENSOR_URL=${_SENSOR_URL},GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+
+substitutions:
+  _REGION: us-central1  # default region
+  _GCS_BUCKET: ''  # must be set in trigger
+  _BASE_URL: ''    # must be set in trigger
+  _SENSOR_URL: ''  # must be set in trigger
+
+images:
+  - 'gcr.io/$PROJECT_ID/selfhydro-api' 
