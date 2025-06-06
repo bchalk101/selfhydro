@@ -64,7 +64,7 @@ jobs:
     - name: Build
       run: npm run build
       env:
-        NEXT_PUBLIC_API_URL: https://bchalk101.github.io/selfhydro
+        NEXT_PUBLIC_API_URL: https://selfhydro-api-268402011423.us-central1.run.app
     
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
