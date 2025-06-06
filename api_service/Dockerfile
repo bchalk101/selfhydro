@@ -21,4 +21,4 @@ ENV PORT=8000
 ENV ENV=production
 
 # Run the application
-CMD exec gunicorn --bind :$PORT --workers 4 --worker-class uvicorn.workers.UvicornWorker --timeout 0 main:app 
+CMD exec uv run gunicorn --bind :$PORT --workers 4 --worker-class uvicorn.workers.UvicornWorker --timeout 0 main:app 
