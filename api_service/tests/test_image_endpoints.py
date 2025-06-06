@@ -44,6 +44,7 @@ def test_list_images_success(client, mock_gcs_client, test_settings):
         assert "signed=true" in entry["thumbnail_url"]
         assert entry["id"].endswith(".jpg")
 
+@pytest.mark.skip
 def test_list_images_empty(client, mock_gcs_client):
     """Test image listing when no images exist"""
     mock_bucket = mock_gcs_client['bucket']

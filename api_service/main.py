@@ -1,3 +1,5 @@
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -49,7 +51,6 @@ def get_storage_client():
 def generate_signed_url(
     bucket_name: str, 
     blob_name: str, 
-    storage_client: storage.Client,
     width: Optional[int] = None,
     height: Optional[int] = None,
     quality: Optional[int] = None,
@@ -59,10 +60,12 @@ def generate_signed_url(
     Generate a signed URL for GCS blob with optional image transformations
     """
     try:
-        bucket = storage_client.bucket(bucket_name)
+        
         blob = bucket.blob(blob_name)
         credentials, project = auth.default()
         credentials.refresh(auth.transport.requests.Request())
+        storage_client = storage.Client(credentials=credentials)
+        bucket = storage_client.bucket(bucket_name)
         
         # Create signed URL with longer expiration
         url = blob.generate_signed_url(
@@ -128,51 +131,31 @@ async def list_images(
     storage_client: storage.Client = Depends(get_storage_client),
     settings: Settings = Depends(get_settings)
 ):
-    """
-    List images from Google Cloud Storage with signed URLs
-    """
     try:
         bucket = storage_client.bucket(settings.GCS_BUCKET)
         blobs = bucket.list_blobs(prefix="images/", max_results=limit)
+        jpg_blobs = [blob for blob in blobs if blob.name.endswith('.jpg')]
         
-        images = []
-        for blob in blobs:
-            if not blob.name.endswith('.jpg'):
-                continue
-                
+        def process_blob(blob):
             try:
                 name = blob.name.split('/')[-1]
                 timestamp_str = name.split('capture_')[1].split('.jpg')[0]
                 timestamp = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
                 
-                # Generate signed URLs for full image and thumbnail
-                full_url = generate_signed_url(
-                    settings.GCS_BUCKET, 
-                    blob.name, 
-                    storage_client,
-                    width=1280,  # Max width for full image
-                    quality=85
-                )
+                full_url = generate_signed_url(settings.GCS_BUCKET, blob.name, width=1280, quality=85)
+                thumbnail_url = generate_signed_url(settings.GCS_BUCKET, blob.name, width=128, quality=60)
                 
-                thumbnail_url = generate_signed_url(
-                    settings.GCS_BUCKET, 
-                    blob.name, 
-                    storage_client,
-                    width=128,  # Thumbnail size
-                    quality=60
-                )
-                
-                images.append(ImageData(
-                    id=name,
-                    url=full_url,
-                    thumbnail_url=thumbnail_url,
-                    timestamp=timestamp
-                ))
+                return ImageData(id=name, url=full_url, thumbnail_url=thumbnail_url, timestamp=timestamp)
             except (IndexError, ValueError) as e:
                 logger.warning(f"Failed to parse timestamp for image {blob.name}: {e}")
-                continue
+                return None
         
-        # Sort by timestamp descending (newest first)
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=min(32, len(jpg_blobs))) as executor:
+            tasks = [loop.run_in_executor(executor, process_blob, blob) for blob in jpg_blobs]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        images = [result for result in results if isinstance(result, ImageData)]
         images.sort(key=lambda x: x.timestamp, reverse=True)
         return images[:limit]
         
