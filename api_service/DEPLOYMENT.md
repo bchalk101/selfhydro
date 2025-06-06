@@ -45,46 +45,41 @@ This guide explains how to deploy the SelfHydro API service to Google Cloud Plat
 
 1. Build the container:
    ```bash
-   docker build -t gcr.io/$PROJECT_ID/selfhydro-api .
+   docker build -t gcr.io/$PROJECT_ID/selfhydro-api:latest .
    ```
 
 2. Push to Container Registry:
    ```bash
-   docker push gcr.io/$PROJECT_ID/selfhydro-api
+   docker push gcr.io/$PROJECT_ID/selfhydro-api:latest
    ```
 
 3. Deploy to Cloud Run:
    ```bash
    gcloud run deploy selfhydro-api \
-     --image gcr.io/$PROJECT_ID/selfhydro-api \
+     --image gcr.io/$PROJECT_ID/selfhydro-api:latest \
      --platform managed \
      --region us-central1 \
-     --allow-unauthenticated \
-     --set-env-vars="GCS_BUCKET=your-bucket,BASE_URL=https://your-domain.com,SENSOR_URL=http://sensor-service-url"
+     --allow-unauthenticated
    ```
 
-## Automated Deployment with Cloud Build
+## Automated Deployment (CI/CD)
 
-1. Create a Cloud Build trigger:
-   ```bash
-   gcloud beta builds triggers create github \
-     --repo-name=your-repo-name \
-     --repo-owner=your-github-username \
-     --branch-pattern="^main$" \
-     --build-config=api_service/cloudbuild.yaml
-   ```
+The project uses GitHub Actions for automated deployments. The deployment process is triggered automatically when changes are pushed to the main branch. The workflow:
 
-2. Set up substitution variables in the Cloud Build trigger:
-   - `_GCS_BUCKET`: Your Google Cloud Storage bucket name
-   - `_BASE_URL`: Your base URL for serving images
-   - `_SENSOR_URL`: URL of your sensor service
-   - `_REGION`: Deployment region (defaults to us-central1)
+1. Runs tests for the API service
+2. Builds and tags the Docker image with the git SHA
+3. Pushes the image to Google Container Registry
+4. Deploys to Cloud Run
 
-3. Push to the main branch to trigger deployment.
+The CI/CD configuration can be found in `.github/workflows/ci-cd.yml`.
+
+Required GitHub Secrets for CI/CD:
+- `GCP_PROJECT_ID`: Your Google Cloud project ID
+- `GCP_SA_KEY`: Service account key with permissions to deploy to Cloud Run
 
 ## Environment Variables
 
-The service requires the following environment variables:
+The service supports the following environment variables:
 
 - `GCS_BUCKET`: Name of the Google Cloud Storage bucket
 - `GOOGLE_CLOUD_PROJECT`: Your Google Cloud project ID
@@ -92,6 +87,8 @@ The service requires the following environment variables:
 - `SENSOR_URL`: URL of the Rust sensor service
 - `PORT`: Port to run the service on (default: 8000)
 - `ENV`: Environment name (development/production)
+
+Note: Environment variables can be configured in the Cloud Run console or through the `gcloud run deploy` command using the `--set-env-vars` flag.
 
 ## Monitoring
 

@@ -2,18 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies and uv
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
 
-# Copy dependency files first to leverage Docker cache
+ENV PATH="/root/.local/bin/:$PATH"
+
 COPY pyproject.toml .
 
-# Install dependencies using uv
-RUN uv pip install .
+RUN uv venv && uv pip install .
 
 # Copy application code
 COPY . .
