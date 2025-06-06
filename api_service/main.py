@@ -44,27 +44,27 @@ class ImageData(BaseModel):
     url: str
     timestamp: datetime
 
-# Initialize Google Cloud Storage client
-storage_client = storage.Client()
+def get_storage_client():
+    return storage.Client()
 
 @app.get("/sensor/latest", response_model=SensorData)
-async def get_latest_sensor_data(settings: Settings = Depends(get_settings)):
+async def get_latest_sensor_data(
+    storage_client: storage.Client = Depends(get_storage_client),
+    settings: Settings = Depends(get_settings)
+):
     """
     Fetch the latest sensor data from Google Cloud Storage
     """
     try:
         bucket = storage_client.bucket(settings.GCS_BUCKET)
-        # List all sensor data files, sorted by timestamp (newest first)
         blobs = list(bucket.list_blobs(prefix="sensor_data/", delimiter="/"))
         
         if not blobs:
             raise HTTPException(status_code=404, detail="No sensor data found")
             
-        # Sort blobs by name (which contains timestamp) in descending order
         blobs.sort(key=lambda x: x.name, reverse=True)
         latest_blob = blobs[0]
         
-        # Download and parse the latest sensor data
         data = json.loads(latest_blob.download_as_string())
         
         return SensorData(
@@ -80,11 +80,9 @@ async def get_latest_sensor_data(settings: Settings = Depends(get_settings)):
 @app.get("/images/{image_name}/stream")
 async def stream_image(
     image_name: str,
+    storage_client: storage.Client = Depends(get_storage_client),
     settings: Settings = Depends(get_settings)
 ):
-    """
-    Stream an image directly from Google Cloud Storage
-    """
     try:
         bucket = storage_client.bucket(settings.GCS_BUCKET)
         blob = bucket.blob(f"images/{image_name}")
@@ -92,7 +90,6 @@ async def stream_image(
         if not blob.exists():
             raise HTTPException(status_code=404, detail="Image not found")
             
-        # Download the image into memory
         image_data = io.BytesIO()
         blob.download_to_file(image_data)
         image_data.seek(0)
@@ -108,12 +105,15 @@ async def stream_image(
         )
         
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         logger.error(f"Error streaming image: {e}")
         raise HTTPException(status_code=500, detail="Failed to stream image")
 
 @app.get("/images", response_model=List[ImageData])
 async def list_images(
     limit: Optional[int] = Query(24, ge=1, le=100),
+    storage_client: storage.Client = Depends(get_storage_client),
     settings: Settings = Depends(get_settings)
 ):
     """
@@ -129,8 +129,7 @@ async def list_images(
                 continue
                 
             try:
-                # Parse timestamp from filename (format: capture_YYYYMMDD_HHMMSS.jpg)
-                name = blob.name.split('/')[-1]  # Get just the filename
+                name = blob.name.split('/')[-1]
                 timestamp_str = name.split('capture_')[1].split('.jpg')[0]
                 timestamp = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
                 
@@ -154,6 +153,7 @@ async def list_images(
 @app.get("/sensor/history", response_model=List[SensorData])
 async def get_sensor_history(
     limit: Optional[int] = Query(24, ge=1, le=100),
+    storage_client: storage.Client = Depends(get_storage_client),
     settings: Settings = Depends(get_settings)
 ):
     """

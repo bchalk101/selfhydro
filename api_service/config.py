@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -11,7 +12,10 @@ class Settings(BaseSettings):
     PORT: int = 8000
     
     ENV: str = "development"
-    
+    INFLUX_HOST: Optional[str] = None
+    INFLUX_DB: Optional[str] = None
+    INFLUX_TOKEN: Optional[str] = None
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
