@@ -17,6 +17,9 @@ export default function TimeLapse() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [windowWidth, setWindowWidth] = useState(0);
+  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
+  const [lowResImages, setLowResImages] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setMounted(true);
@@ -42,34 +45,75 @@ export default function TimeLapse() {
 
   useEffect(() => {
     if (!mounted) return;
-
-    const loadImageBlob = async (image: ImageData) => {
-      if (!imageBlobs[image.id]) {
-        try {
-          const blob = await getImageStream(image.id);
-          const url = URL.createObjectURL(blob);
-          setImageBlobs(prev => ({ ...prev, [image.id]: url }));
-        } catch (error) {
-          console.error(`Failed to load image ${image.id}:`, error);
-        }
-      }
+    
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
     };
+    
+    // Set initial width
+    handleResize();
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [mounted]);
+
+  const loadImageBlob = async (image: ImageData, isThumbnail: boolean = false) => {
+    if (!imageBlobs[image.id] && !loadingStates[image.id]) {
+      try {
+        setLoadingStates(prev => ({ ...prev, [image.id]: true }));
+
+        // First load a very low-res preview for immediate display
+        if (!isThumbnail && !lowResImages[image.id]) {
+          const lowResBlob = await getImageStream(image.id, { width: 320, quality: 30 });
+          const lowResUrl = URL.createObjectURL(lowResBlob);
+          setLowResImages(prev => ({ ...prev, [image.id]: lowResUrl }));
+        }
+
+        let options;
+        if (isThumbnail) {
+          options = { width: 96, quality: 60 };
+        } else {
+          // Responsive image sizes based on screen width
+          if (windowWidth <= 640) { // Mobile
+            options = { width: 640, quality: 75 };
+          } else if (windowWidth <= 1024) { // Tablet
+            options = { width: 1024, quality: 80 };
+          } else { // Desktop
+            options = { width: 1280, quality: 85 };
+          }
+        }
+        
+        const blob = await getImageStream(image.id, options);
+        const url = URL.createObjectURL(blob);
+        setImageBlobs(prev => ({ ...prev, [image.id]: url }));
+        setLoadingStates(prev => ({ ...prev, [image.id]: false }));
+      } catch (error) {
+        console.error(`Failed to load image ${image.id}:`, error);
+        setLoadingStates(prev => ({ ...prev, [image.id]: false }));
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!mounted) return;
 
     if (selectedImage) {
-      loadImageBlob(selectedImage);
+      loadImageBlob(selectedImage, false);
     }
 
+    // Preload next few images as thumbnails first
     const preloadCount = 5;
     const nextImages = images.slice(currentIndex + 1, currentIndex + preloadCount + 1);
-    nextImages.forEach(loadImageBlob);
+    nextImages.forEach(image => loadImageBlob(image, true));
   }, [selectedImage, currentIndex, images, mounted, imageBlobs]);
 
   useEffect(() => {
     if (!mounted) return;
     return () => {
       Object.values(imageBlobs).forEach(URL.revokeObjectURL);
+      Object.values(lowResImages).forEach(URL.revokeObjectURL);
     };
-  }, [mounted, imageBlobs]);
+  }, [mounted, imageBlobs, lowResImages]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -162,7 +206,7 @@ export default function TimeLapse() {
 
       <div className="relative aspect-video mb-6 bg-black rounded-lg overflow-hidden">
         <AnimatePresence mode="wait">
-          {selectedImage && imageBlobs[selectedImage.id] && (
+          {selectedImage && (imageBlobs[selectedImage.id] || lowResImages[selectedImage.id]) && (
             <motion.div
               key={selectedImage.id}
               className="w-full h-full relative"
@@ -172,13 +216,20 @@ export default function TimeLapse() {
               transition={{ duration: 0.2 }}
             >
               <Image
-                src={imageBlobs[selectedImage.id]}
+                src={imageBlobs[selectedImage.id] || lowResImages[selectedImage.id]}
                 alt={`Plant at ${selectedImage.timestamp}`}
-                className="object-contain"
+                className={`object-contain transition-opacity duration-300 ${
+                  loadingStates[selectedImage.id] ? 'opacity-50' : 'opacity-100'
+                } ${lowResImages[selectedImage.id] && !imageBlobs[selectedImage.id] ? 'blur-sm' : ''}`}
                 fill
                 unoptimized
                 priority
               />
+              {loadingStates[selectedImage.id] && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

@@ -19,4 +19,5 @@ dependencies = [
     "pytest-asyncio>=1.0.0",
     "pytest-mock>=3.14.1",
     "httpx>=0.28.1",
+    "Pillow>=10.0.0",
 ]

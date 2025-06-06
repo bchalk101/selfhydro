@@ -22,9 +22,21 @@ export const getImages = async (limit: number = 24): Promise<ImageData[]> => {
   return response.data;
 };
 
-export const getImageStream = async (imageId: string): Promise<Blob> => {
-  const response = await api.get(`/images/${imageId}/stream`, {
-    responseType: 'blob',
+interface ImageStreamOptions {
+  width?: number;
+  height?: number;
+  quality?: number;
+}
+
+export const getImageStream = async (imageId: string, options: ImageStreamOptions = {}): Promise<Blob> => {
+  const params = new URLSearchParams();
+  if (options.width) params.append('width', options.width.toString());
+  if (options.height) params.append('height', options.height.toString());
+  if (options.quality) params.append('quality', options.quality.toString());
+  
+  const url = `/images/${imageId}/stream${params.toString() ? '?' + params.toString() : ''}`;
+  const response = await api.get(url, {
+    responseType: 'blob'
   });
   return response.data;
 }; 

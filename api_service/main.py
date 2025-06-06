@@ -11,6 +11,7 @@ import logging
 from dateutil import parser
 import io
 import json
+from PIL import Image
 
 from config import Settings, get_settings
 
@@ -80,10 +81,13 @@ async def get_latest_sensor_data(
 @app.get("/images/{image_name}/stream")
 async def stream_image(
     image_name: str,
-    storage_client: storage.Client = Depends(get_storage_client),
-    settings: Settings = Depends(get_settings)
+    width: Optional[int] = Query(None, gt=0),
+    height: Optional[int] = Query(None, gt=0),
+    quality: Optional[int] = Query(75, ge=1, le=100)
 ):
+    """Stream an image with optional resizing and quality adjustment"""
     try:
+        storage_client = get_storage_client()
         bucket = storage_client.bucket(settings.GCS_BUCKET)
         blob = bucket.blob(f"images/{image_name}")
         
@@ -94,19 +98,41 @@ async def stream_image(
         blob.download_to_file(image_data)
         image_data.seek(0)
         
+        # Process image if size or quality parameters are provided
+        if width or height or quality != 75:
+            img = Image.open(image_data)
+            
+            # Resize if requested
+            if width or height:
+                # Calculate new dimensions maintaining aspect ratio
+                if width and height:
+                    size = (width, height)
+                elif width:
+                    ratio = width / img.width
+                    size = (width, int(img.height * ratio))
+                else:
+                    ratio = height / img.height
+                    size = (int(img.width * ratio), height)
+                    
+                img = img.resize(size, Image.Resampling.LANCZOS)
+            
+            # Save with specified quality
+            output = io.BytesIO()
+            img.save(output, format='JPEG', quality=quality, optimize=True)
+            output.seek(0)
+            return StreamingResponse(
+                content=output,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "public, max-age=31536000"}
+            )
+        
         return StreamingResponse(
             content=image_data,
             media_type="image/jpeg",
-            headers={
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0"
-            }
+            headers={"Cache-Control": "public, max-age=31536000"}
         )
         
     except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
         logger.error(f"Error streaming image: {e}")
         raise HTTPException(status_code=500, detail="Failed to stream image")
 
