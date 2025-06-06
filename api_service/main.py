@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 from typing import List, Optional
 from google.cloud import storage
+from google import auth
 import logging
 from dateutil import parser
 import json
@@ -60,12 +61,16 @@ def generate_signed_url(
     try:
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
+        credentials, project = auth.default()
+        credentials.refresh(auth.transport.requests.Request())
         
         # Create signed URL with longer expiration
         url = blob.generate_signed_url(
             version="v4",
             expiration=datetime.utcnow() + timedelta(hours=expiration_hours),
             method="GET",
+            service_account_email=credentials.service_account_email,
+            access_token=credentials.token,
         )
         
         # Add image transformation parameters if specified
