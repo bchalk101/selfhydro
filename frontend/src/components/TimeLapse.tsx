@@ -57,108 +57,46 @@ export default function TimeLapse() {
     return () => window.removeEventListener('resize', handleResize);
   }, [mounted]);
 
-  const loadImageBlob = useCallback(async (image: ImageData, isThumbnail: boolean = false) => {
-    if (!imageBlobs[image.id] && !loadingStates[image.id]) {
-      try {
-        setLoadingStates(prev => ({ ...prev, [image.id]: true }));
-
-        // First load a very low-res preview for immediate display
-        if (!isThumbnail && !lowResImages[image.id]) {
-          const lowResBlob = await getImageStream(image.id, { width: 320, quality: 30 });
-          const lowResUrl = URL.createObjectURL(lowResBlob);
-          setLowResImages(prev => ({ ...prev, [image.id]: lowResUrl }));
-        }
-
-        let options;
-        if (isThumbnail) {
-          options = { width: 96, quality: 60 };
-        } else {
-          // Responsive image sizes based on screen width
-          if (windowWidth <= 640) { // Mobile
-            options = { width: 640, quality: 75 };
-          } else if (windowWidth <= 1024) { // Tablet
-            options = { width: 1024, quality: 80 };
-          } else { // Desktop
-            options = { width: 1280, quality: 85 };
-          }
-        }
-        
-        const blob = await getImageStream(image.id, options);
-        const url = URL.createObjectURL(blob);
-        setImageBlobs(prev => ({ ...prev, [image.id]: url }));
-        setLoadingStates(prev => ({ ...prev, [image.id]: false }));
-      } catch (error) {
-        console.error(`Failed to load image ${image.id}:`, error);
-        setLoadingStates(prev => ({ ...prev, [image.id]: false }));
+  // Concise image loader
+  const loadImageBlob = useCallback(async (image: ImageData, isThumbnail = false) => {
+    if (imageBlobs[image.id] || loadingStates[image.id]) return;
+    setLoadingStates(prev => ({ ...prev, [image.id]: true }));
+    try {
+      if (!isThumbnail && !lowResImages[image.id]) {
+        const lowResBlob = await getImageStream(image.id, { width: 320, quality: 30 });
+        setLowResImages(prev => ({ ...prev, [image.id]: URL.createObjectURL(lowResBlob) }));
       }
+      const options = isThumbnail
+        ? { width: 96, quality: 60 }
+        : windowWidth <= 640
+          ? { width: 640, quality: 75 }
+          : windowWidth <= 1024
+            ? { width: 1024, quality: 80 }
+            : { width: 1280, quality: 85 };
+      const blob = await getImageStream(image.id, options);
+      setImageBlobs(prev => ({ ...prev, [image.id]: URL.createObjectURL(blob) }));
+    } catch (e) {
+      console.error(`Failed to load image ${image.id}:`, e);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [image.id]: false }));
     }
   }, [imageBlobs, loadingStates, lowResImages, windowWidth]);
 
+  // Combined effect for loading selected and preloading next images
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || !selectedImage) return;
+    loadImageBlob(selectedImage, false);
+    images.slice(currentIndex + 1, currentIndex + 4).forEach(img => {
+      if (!imageBlobs[img.id] && !loadingStates[img.id]) loadImageBlob(img, true);
+    });
+  }, [mounted, selectedImage, currentIndex, images, imageBlobs, loadingStates, loadImageBlob]);
 
-    // Cleanup function for a specific image ID
-    const cleanupImage = (imageId: string) => {
-      if (imageBlobs[imageId]) {
-        URL.revokeObjectURL(imageBlobs[imageId]);
-      }
-      if (lowResImages[imageId]) {
-        URL.revokeObjectURL(lowResImages[imageId]);
-      }
-    };
-
-    // Cleanup previous images when changing selection
-    if (selectedImage) {
-      const currentImageId = selectedImage.id;
-      Object.keys(imageBlobs).forEach(imageId => {
-        if (imageId !== currentImageId) {
-          cleanupImage(imageId);
-          setImageBlobs(prev => {
-            const newBlobs = { ...prev };
-            delete newBlobs[imageId];
-            return newBlobs;
-          });
-          setLowResImages(prev => {
-            const newLowRes = { ...prev };
-            delete newLowRes[imageId];
-            return newLowRes;
-          });
-        }
-      });
-
-      loadImageBlob(selectedImage, false);
-    }
-
-    // Preload next few images
-    const preloadCount = 3; // Reduced from 5 to 3 to manage memory better
-    const nextImages = images.slice(currentIndex + 1, currentIndex + preloadCount + 1);
-    nextImages.forEach(image => loadImageBlob(image, true));
-
-    // Cleanup on unmount or when selectedImage changes
-    return () => {
-      // Only cleanup images that aren't the current image or in the preload queue
-      const keepImages = new Set([
-        selectedImage?.id,
-        ...nextImages.map(img => img.id)
-      ]);
-      
-      Object.keys(imageBlobs).forEach(imageId => {
-        if (!keepImages.has(imageId)) {
-          cleanupImage(imageId);
-        }
-      });
-    };
-  }, [selectedImage, currentIndex, images, mounted, imageBlobs, loadImageBlob, lowResImages]);
-
-  // Update the component cleanup effect
+  // Cleanup all object URLs on unmount
   useEffect(() => {
     if (!mounted) return;
     return () => {
-      // Final cleanup when component unmounts
       Object.values(imageBlobs).forEach(URL.revokeObjectURL);
       Object.values(lowResImages).forEach(URL.revokeObjectURL);
-      setImageBlobs({});
-      setLowResImages({});
     };
   }, [mounted, imageBlobs, lowResImages]);
 
