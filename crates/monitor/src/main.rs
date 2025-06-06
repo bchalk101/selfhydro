@@ -109,7 +109,7 @@ async fn main() -> Result<()> {
     info!("[{}:{}] Starting combined monitoring service", file!(), line!());
 
     let mut image_interval = time::interval(Duration::from_secs(30 * 60)); // 30 minutes
-    let mut sensor_interval = time::interval(Duration::from_secs(60)); // 1 minute
+    let mut sensor_interval = time::interval(Duration::from_secs(30 * 60)); // 1 minute
 
     loop {
         tokio::select! {

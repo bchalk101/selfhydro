@@ -26,7 +26,7 @@ ssh $PI_HOST "mkdir -p $TARGET_DIR/bin"
 
 # Step 3: Copy source code to Pi
 echo -e "\n${YELLOW}Copying source code to Raspberry Pi...${NC}"
-rsync -av --exclude 'target' --exclude '.git' ./ $PI_HOST:$TARGET_DIR/
+rsync -av --exclude 'target' --exclude '.git' --exclude 'frontend' --exclude 'api_service' ./ $PI_HOST:$TARGET_DIR/
 
 # Step 4: Run tests
 echo -e "\n${YELLOW}Running tests on Raspberry Pi...${NC}"
