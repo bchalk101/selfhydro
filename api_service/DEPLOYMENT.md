@@ -43,17 +43,26 @@ This guide explains how to deploy the SelfHydro API service to Google Cloud Plat
 
 ## Manual Deployment
 
-1. Build the container:
+1. Authenticate with Google Cloud:
+   ```bash
+   # Login to gcloud
+   gcloud auth login
+
+   # Configure docker to use gcloud credentials
+   gcloud auth configure-docker
+   ```
+
+2. Build the container:
    ```bash
    docker build -t gcr.io/$PROJECT_ID/selfhydro-api:latest .
    ```
 
-2. Push to Container Registry:
+3. Push to Container Registry:
    ```bash
    docker push gcr.io/$PROJECT_ID/selfhydro-api:latest
    ```
 
-3. Deploy to Cloud Run:
+4. Deploy to Cloud Run:
    ```bash
    gcloud run deploy selfhydro-api \
      --image gcr.io/$PROJECT_ID/selfhydro-api:latest \
