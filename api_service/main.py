@@ -61,12 +61,12 @@ def generate_signed_url(
     """
     try:
         
-        blob = bucket.blob(blob_name)
         credentials, project = auth.default()
         credentials.refresh(auth.transport.requests.Request())
         storage_client = storage.Client(credentials=credentials)
         bucket = storage_client.bucket(bucket_name)
-        
+        blob = bucket.blob(blob_name)
+
         # Create signed URL with longer expiration
         url = blob.generate_signed_url(
             version="v4",
