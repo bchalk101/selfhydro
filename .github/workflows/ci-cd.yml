@@ -38,7 +38,7 @@ jobs:
         uv pip install pytest pytest-cov
     
     - name: Run tests
-      run: uv run pytest
+      run: GCS_BUCKET=test uv run pytest
 
   test-and-deploy-frontend:
     runs-on: ubuntu-latest
