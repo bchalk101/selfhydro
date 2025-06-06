@@ -4,22 +4,19 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PlayIcon, PauseIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { ImageData } from '@/types';
-import { getImages, getImageStream } from '@/lib/api';
+import { getImages } from '@/lib/api';
 import { format } from 'date-fns';
 import Image from 'next/image';
 
 export default function TimeLapse() {
   const [mounted, setMounted] = useState(false);
   const [images, setImages] = useState<ImageData[]>([]);
-  const [imageBlobs, setImageBlobs] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<ImageData | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [windowWidth, setWindowWidth] = useState(0);
-  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
-  const [lowResImages, setLowResImages] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setMounted(true);
@@ -30,101 +27,45 @@ export default function TimeLapse() {
 
     const fetchImages = async () => {
       try {
+        setLoading(true);
         const data = await getImages(24);
         setImages(data);
         if (data.length > 0) {
           setSelectedImage(data[0]);
         }
-      } catch {
+      } catch (err) {
+        console.error('Failed to fetch images:', err);
         setError('Failed to fetch images');
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchImages();
   }, [mounted]);
 
+  // Auto-play functionality
   useEffect(() => {
-    if (!mounted) return;
-    
-    const handleResize = () => {
-      setWindowWidth(window.innerWidth);
-    };
-    
-    // Set initial width
-    handleResize();
-    
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [mounted]);
+    if (!mounted || !isPlaying || images.length === 0) return;
 
-  // Concise image loader
-  const loadImageBlob = useCallback(async (image: ImageData, isThumbnail = false) => {
-    if (imageBlobs[image.id] || loadingStates[image.id]) return;
-    setLoadingStates(prev => ({ ...prev, [image.id]: true }));
-    try {
-      if (!isThumbnail && !lowResImages[image.id]) {
-        const lowResBlob = await getImageStream(image.id, { width: 320, quality: 30 });
-        setLowResImages(prev => ({ ...prev, [image.id]: URL.createObjectURL(lowResBlob) }));
-      }
-      const options = isThumbnail
-        ? { width: 96, quality: 60 }
-        : windowWidth <= 640
-          ? { width: 640, quality: 75 }
-          : windowWidth <= 1024
-            ? { width: 1024, quality: 80 }
-            : { width: 1280, quality: 85 };
-      const blob = await getImageStream(image.id, options);
-      setImageBlobs(prev => ({ ...prev, [image.id]: URL.createObjectURL(blob) }));
-    } catch (e) {
-      console.error(`Failed to load image ${image.id}:`, e);
-    } finally {
-      setLoadingStates(prev => ({ ...prev, [image.id]: false }));
-    }
-  }, [imageBlobs, loadingStates, lowResImages, windowWidth]);
+    const interval = setInterval(() => {
+      setCurrentIndex((prevIndex) => {
+        const nextIndex = (prevIndex + 1) % images.length;
+        setSelectedImage(images[nextIndex]);
+        return nextIndex;
+      });
+    }, 1000);
 
-  // Combined effect for loading selected and preloading next images
-  useEffect(() => {
-    if (!mounted || !selectedImage) return;
-    loadImageBlob(selectedImage, false);
-    images.slice(currentIndex + 1, currentIndex + 4).forEach(img => {
-      if (!imageBlobs[img.id] && !loadingStates[img.id]) loadImageBlob(img, true);
-    });
-  }, [mounted, selectedImage, currentIndex, images, imageBlobs, loadingStates, loadImageBlob]);
-
-  // Cleanup all object URLs on unmount
-  useEffect(() => {
-    if (!mounted) return;
-    return () => {
-      Object.values(imageBlobs).forEach(URL.revokeObjectURL);
-      Object.values(lowResImages).forEach(URL.revokeObjectURL);
-    };
-  }, [mounted, imageBlobs, lowResImages]);
-
-  useEffect(() => {
-    if (!mounted) return;
-    let interval: NodeJS.Timeout;
-
-    if (isPlaying && images.length > 0) {
-      interval = setInterval(() => {
-        setCurrentIndex((prevIndex) => {
-          const nextIndex = (prevIndex + 1) % images.length;
-          setSelectedImage(images[nextIndex]);
-          return nextIndex;
-        });
-      }, 1000);
-    }
-
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
+    return () => clearInterval(interval);
   }, [isPlaying, images, mounted]);
 
+  // Scroll to active thumbnail
   const scrollToThumbnail = useCallback((index: number) => {
     if (!mounted || !scrollContainerRef.current) return;
+    
     const container = scrollContainerRef.current;
     const thumbnail = container.children[index] as HTMLElement;
+    
     if (thumbnail) {
       const scrollLeft = thumbnail.offsetLeft - container.clientWidth / 2 + thumbnail.clientWidth / 2;
       container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
@@ -136,44 +77,95 @@ export default function TimeLapse() {
     scrollToThumbnail(currentIndex);
   }, [currentIndex, mounted, scrollToThumbnail]);
 
-  const handlePrevious = () => {
+  const handlePrevious = useCallback(() => {
+    if (images.length === 0) return;
     setIsPlaying(false);
     setCurrentIndex((prev) => {
       const newIndex = prev > 0 ? prev - 1 : images.length - 1;
       setSelectedImage(images[newIndex]);
       return newIndex;
     });
-  };
+  }, [images]);
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
+    if (images.length === 0) return;
     setIsPlaying(false);
     setCurrentIndex((prev) => {
       const newIndex = (prev + 1) % images.length;
       setSelectedImage(images[newIndex]);
       return newIndex;
     });
-  };
+  }, [images]);
 
-  if (!mounted) {
+  const handleImageSelect = useCallback((image: ImageData, index: number) => {
+    setSelectedImage(image);
+    setCurrentIndex(index);
+    setIsPlaying(false);
+  }, []);
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!mounted) return;
+
+    const handleKeyPress = (e: KeyboardEvent) => {
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          handlePrevious();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          handleNext();
+          break;
+        case ' ':
+          e.preventDefault();
+          setIsPlaying(prev => !prev);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [mounted, images.length]);
+
+  if (!mounted || loading) {
     return (
-      <div className="animate-pulse p-4">
-        <div className="h-96 bg-gray-200 rounded-lg"></div>
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="aspect-video bg-gray-200 rounded-lg mb-6"></div>
+          <div className="flex space-x-2">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="w-24 aspect-video bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-4 bg-red-100 text-red-700 rounded-lg">
-        {error}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="p-4 bg-red-100 text-red-700 rounded-lg">
+          {error}
+          <button 
+            onClick={() => window.location.reload()} 
+            className="ml-4 text-red-800 underline"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
 
   if (images.length === 0) {
     return (
-      <div className="animate-pulse p-4">
-        <div className="h-96 bg-gray-200 rounded-lg"></div>
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="text-center py-12">
+          <p className="text-gray-500">No images available</p>
+        </div>
       </div>
     );
   }
@@ -189,42 +181,44 @@ export default function TimeLapse() {
         )}
       </div>
 
-      <div className="relative aspect-video mb-6 bg-black rounded-lg overflow-hidden">
+      {/* Main Image Display */}
+      <div className="relative aspect-video mb-6 bg-gray-900 rounded-lg overflow-hidden">
         <AnimatePresence mode="wait">
-          {selectedImage && (imageBlobs[selectedImage.id] || lowResImages[selectedImage.id]) && (
+          {selectedImage && (
             <motion.div
               key={selectedImage.id}
               className="w-full h-full relative"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.3 }}
             >
               <Image
-                src={imageBlobs[selectedImage.id] || lowResImages[selectedImage.id]}
+                src={selectedImage.url}
                 alt={`Plant at ${selectedImage.timestamp}`}
-                className={`object-contain transition-opacity duration-300 ${
-                  loadingStates[selectedImage.id] ? 'opacity-50' : 'opacity-100'
-                } ${lowResImages[selectedImage.id] && !imageBlobs[selectedImage.id] ? 'blur-sm' : ''}`}
+                className="object-contain"
                 fill
-                unoptimized
-                priority
+                priority={currentIndex < 3}
+                unoptimized // Since we're using GCS signed URLs with transformations
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 1280px"
+                onError={() => {
+                  console.error(`Failed to load image: ${selectedImage.id}`);
+                  // Optionally set a fallback image
+                  // e.currentTarget.src = '/fallback-image.jpg';
+                }}
               />
-              {loadingStates[selectedImage.id] && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                </div>
-              )}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
+      {/* Controls */}
       <div className="flex justify-between items-center mb-6">
         <div className="flex space-x-4">
           <button
             onClick={() => setIsPlaying(!isPlaying)}
-            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            disabled={images.length === 0}
           >
             {isPlaying ? (
               <>
@@ -238,60 +232,84 @@ export default function TimeLapse() {
               </>
             )}
           </button>
+          
+          <div className="text-sm text-gray-500 flex items-center">
+            Use arrow keys or spacebar to control
+          </div>
         </div>
+        
         <div className="flex items-center space-x-4">
           <button
             onClick={handlePrevious}
-            className="p-2 rounded-full hover:bg-gray-100"
+            className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50 transition-colors"
+            disabled={images.length === 0}
           >
             <ChevronLeftIcon className="h-6 w-6 text-gray-600" />
           </button>
-          <span className="text-gray-600 min-w-[80px] text-center">
+          <span className="text-gray-600 min-w-[80px] text-center font-medium">
             {currentIndex + 1} / {images.length}
           </span>
           <button
             onClick={handleNext}
-            className="p-2 rounded-full hover:bg-gray-100"
+            className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50 transition-colors"
+            disabled={images.length === 0}
           >
             <ChevronRightIcon className="h-6 w-6 text-gray-600" />
           </button>
         </div>
       </div>
 
+      {/* Thumbnail Strip */}
       <div className="relative">
         <div
           ref={scrollContainerRef}
-          className="flex space-x-2 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+          className="flex space-x-2 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin"
         >
           {images.map((image, index) => (
             <button
               key={image.id}
-              onClick={() => {
-                setSelectedImage(image);
-                setCurrentIndex(index);
-                setIsPlaying(false);
-              }}
-              className={`relative flex-shrink-0 w-24 aspect-video snap-center ${
+              onClick={() => handleImageSelect(image, index)}
+              className={`relative flex-shrink-0 w-24 aspect-video snap-center rounded-md overflow-hidden transition-all duration-200 ${
                 selectedImage?.id === image.id
-                  ? 'ring-2 ring-indigo-600'
-                  : 'hover:ring-2 hover:ring-indigo-400'
+                  ? 'ring-2 ring-indigo-600 scale-105'
+                  : 'hover:ring-2 hover:ring-indigo-400 hover:scale-105'
               }`}
             >
-              {imageBlobs[image.id] && (
-                <Image
-                  src={imageBlobs[image.id]}
-                  alt={`Thumbnail ${index + 1}`}
-                  className="w-full h-full object-cover rounded-md"
-                  width={96}
-                  height={54}
-                  unoptimized
-                />
-              )}
+              <Image
+                src={image.thumbnail_url}
+                alt={`Thumbnail ${index + 1}`}
+                className="w-full h-full object-cover"
+                width={128}
+                height={72}
+                unoptimized // Using GCS signed URLs
+                onError={() => {
+                  console.error(`Failed to load thumbnail: ${image.id}`);
+                  // Could set a fallback thumbnail here
+                }}
+              />
+              
               <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-10 transition-opacity" />
+              
+              {/* Timestamp overlay for thumbnails */}
+              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 text-center opacity-0 hover:opacity-100 transition-opacity">
+                {format(new Date(image.timestamp), 'HH:mm')}
+              </div>
             </button>
           ))}
         </div>
       </div>
+
+      {/* Progress indicator */}
+      {isPlaying && (
+        <div className="mt-4">
+          <div className="w-full bg-gray-200 rounded-full h-1">
+            <div 
+              className="bg-indigo-600 h-1 rounded-full transition-all duration-1000"
+              style={{ width: `${((currentIndex + 1) / images.length) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
-} 
+}
