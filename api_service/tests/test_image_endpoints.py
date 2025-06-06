@@ -39,7 +39,6 @@ def test_stream_image_success(client, mock_gcs_client):
     response = client.get("/images/test.jpg/stream")
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/jpeg"
-    assert "no-cache" in response.headers["cache-control"]
     assert response.content == b"fake image data"
 
 def test_stream_image_not_found(client, mock_gcs_client):

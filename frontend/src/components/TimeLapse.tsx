@@ -57,7 +57,7 @@ export default function TimeLapse() {
     return () => window.removeEventListener('resize', handleResize);
   }, [mounted]);
 
-  const loadImageBlob = async (image: ImageData, isThumbnail: boolean = false) => {
+  const loadImageBlob = useCallback(async (image: ImageData, isThumbnail: boolean = false) => {
     if (!imageBlobs[image.id] && !loadingStates[image.id]) {
       try {
         setLoadingStates(prev => ({ ...prev, [image.id]: true }));
@@ -92,7 +92,7 @@ export default function TimeLapse() {
         setLoadingStates(prev => ({ ...prev, [image.id]: false }));
       }
     }
-  };
+  }, [imageBlobs, loadingStates, lowResImages, windowWidth]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -105,7 +105,7 @@ export default function TimeLapse() {
     const preloadCount = 5;
     const nextImages = images.slice(currentIndex + 1, currentIndex + preloadCount + 1);
     nextImages.forEach(image => loadImageBlob(image, true));
-  }, [selectedImage, currentIndex, images, mounted, imageBlobs]);
+  }, [selectedImage, currentIndex, images, mounted, imageBlobs, loadImageBlob]);
 
   useEffect(() => {
     if (!mounted) return;

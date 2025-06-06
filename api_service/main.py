@@ -4,9 +4,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List, Optional
-import os
 from google.cloud import storage
-import aiohttp
 import logging
 from dateutil import parser
 import io
@@ -83,11 +81,12 @@ async def stream_image(
     image_name: str,
     width: Optional[int] = Query(None, gt=0),
     height: Optional[int] = Query(None, gt=0),
-    quality: Optional[int] = Query(75, ge=1, le=100)
+    quality: Optional[int] = Query(75, ge=1, le=100),
+    settings: Settings = Depends(get_settings),
+    storage_client: storage.Client = Depends(get_storage_client),
 ):
     """Stream an image with optional resizing and quality adjustment"""
     try:
-        storage_client = get_storage_client()
         bucket = storage_client.bucket(settings.GCS_BUCKET)
         blob = bucket.blob(f"images/{image_name}")
         
@@ -100,31 +99,35 @@ async def stream_image(
         
         # Process image if size or quality parameters are provided
         if width or height or quality != 75:
-            img = Image.open(image_data)
-            
-            # Resize if requested
-            if width or height:
-                # Calculate new dimensions maintaining aspect ratio
-                if width and height:
-                    size = (width, height)
-                elif width:
-                    ratio = width / img.width
-                    size = (width, int(img.height * ratio))
-                else:
-                    ratio = height / img.height
-                    size = (int(img.width * ratio), height)
-                    
-                img = img.resize(size, Image.Resampling.LANCZOS)
-            
-            # Save with specified quality
-            output = io.BytesIO()
-            img.save(output, format='JPEG', quality=quality, optimize=True)
-            output.seek(0)
-            return StreamingResponse(
-                content=output,
-                media_type="image/jpeg",
-                headers={"Cache-Control": "public, max-age=31536000"}
-            )
+            try:
+                img = Image.open(image_data)
+                
+                # Resize if requested
+                if width or height:
+                    # Calculate new dimensions maintaining aspect ratio
+                    if width and height:
+                        size = (width, height)
+                    elif width:
+                        ratio = width / img.width
+                        size = (width, int(img.height * ratio))
+                    else:
+                        ratio = height / img.height
+                        size = (int(img.width * ratio), height)
+                        
+                    img = img.resize(size, Image.Resampling.LANCZOS)
+                
+                # Save with specified quality
+                output = io.BytesIO()
+                img.save(output, format='JPEG', quality=quality, optimize=True)
+                output.seek(0)
+                return StreamingResponse(
+                    content=output,
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=31536000"}
+                )
+            except Exception as e:
+                logger.error(f"Error processing image: {e}")
+                raise HTTPException(status_code=500, detail="Failed to process image")
         
         return StreamingResponse(
             content=image_data,
@@ -132,6 +135,8 @@ async def stream_image(
             headers={"Cache-Control": "public, max-age=31536000"}
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error streaming image: {e}")
         raise HTTPException(status_code=500, detail="Failed to stream image")
