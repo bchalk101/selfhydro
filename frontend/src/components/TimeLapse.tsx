@@ -97,21 +97,68 @@ export default function TimeLapse() {
   useEffect(() => {
     if (!mounted) return;
 
+    // Cleanup function for a specific image ID
+    const cleanupImage = (imageId: string) => {
+      if (imageBlobs[imageId]) {
+        URL.revokeObjectURL(imageBlobs[imageId]);
+      }
+      if (lowResImages[imageId]) {
+        URL.revokeObjectURL(lowResImages[imageId]);
+      }
+    };
+
+    // Cleanup previous images when changing selection
     if (selectedImage) {
+      const currentImageId = selectedImage.id;
+      Object.keys(imageBlobs).forEach(imageId => {
+        if (imageId !== currentImageId) {
+          cleanupImage(imageId);
+          setImageBlobs(prev => {
+            const newBlobs = { ...prev };
+            delete newBlobs[imageId];
+            return newBlobs;
+          });
+          setLowResImages(prev => {
+            const newLowRes = { ...prev };
+            delete newLowRes[imageId];
+            return newLowRes;
+          });
+        }
+      });
+
       loadImageBlob(selectedImage, false);
     }
 
-    // Preload next few images as thumbnails first
-    const preloadCount = 5;
+    // Preload next few images
+    const preloadCount = 3; // Reduced from 5 to 3 to manage memory better
     const nextImages = images.slice(currentIndex + 1, currentIndex + preloadCount + 1);
     nextImages.forEach(image => loadImageBlob(image, true));
-  }, [selectedImage, currentIndex, images, mounted, imageBlobs, loadImageBlob]);
 
+    // Cleanup on unmount or when selectedImage changes
+    return () => {
+      // Only cleanup images that aren't the current image or in the preload queue
+      const keepImages = new Set([
+        selectedImage?.id,
+        ...nextImages.map(img => img.id)
+      ]);
+      
+      Object.keys(imageBlobs).forEach(imageId => {
+        if (!keepImages.has(imageId)) {
+          cleanupImage(imageId);
+        }
+      });
+    };
+  }, [selectedImage, currentIndex, images, mounted, imageBlobs, loadImageBlob, lowResImages]);
+
+  // Update the component cleanup effect
   useEffect(() => {
     if (!mounted) return;
     return () => {
+      // Final cleanup when component unmounts
       Object.values(imageBlobs).forEach(URL.revokeObjectURL);
       Object.values(lowResImages).forEach(URL.revokeObjectURL);
+      setImageBlobs({});
+      setLowResImages({});
     };
   }, [mounted, imageBlobs, lowResImages]);
 
