@@ -36,7 +36,6 @@ jobs:
       run: |
         uv venv
         uv pip install pytest pytest-cov
-        uv pip sync
     
     - name: Run tests
       run: uv run pytest
@@ -66,8 +65,13 @@ jobs:
     - name: Build
       run: npm run build
       env:
-        NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+        NEXT_PUBLIC_API_URL: https://bchalk101.github.io/selfhydro
     
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ./out
+
   deploy:
     environment:
       name: github-pages
