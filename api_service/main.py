@@ -60,36 +60,30 @@ def generate_signed_url(
     Generate a signed URL for GCS blob with optional image transformations
     """
     try:
-        
         credentials, project = auth.default()
         credentials.refresh(auth.transport.requests.Request())
         storage_client = storage.Client(credentials=credentials)
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
 
-        # Create signed URL with longer expiration
+        # Build query parameters for transformations
+        query_parameters = {}
+        if width:
+            query_parameters['w'] = str(width)
+        if height:
+            query_parameters['h'] = str(height)
+        if quality:
+            query_parameters['q'] = str(quality)
+
+        # Generate signed URL with transformation parameters included
         url = blob.generate_signed_url(
             version="v4",
             expiration=datetime.utcnow() + timedelta(hours=expiration_hours),
             method="GET",
             service_account_email=credentials.service_account_email,
             access_token=credentials.token,
+            query_parameters=query_parameters  # Include params in signing
         )
-        
-        # Add image transformation parameters if specified
-        # Note: This works with GCS + Cloud CDN image optimization
-        if width or height or quality:
-            params = {}
-            if width:
-                params['w'] = str(width)
-            if height:
-                params['h'] = str(height)
-            if quality:
-                params['q'] = str(quality)
-            
-            # Add transformation parameters to URL
-            separator = '&' if '?' in url else '?'
-            url = f"{url}{separator}{urlencode(params)}"
         
         return url
         
