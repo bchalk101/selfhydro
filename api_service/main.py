@@ -127,8 +127,12 @@ async def list_images(
 ):
     try:
         bucket = storage_client.bucket(settings.GCS_BUCKET)
-        blobs = bucket.list_blobs(prefix="images/", max_results=limit)
+        blobs = bucket.list_blobs(prefix="images/")
         jpg_blobs = [blob for blob in blobs if blob.name.endswith('.jpg')]
+        
+        jpg_blobs.sort(key=lambda x: x.name, reverse=True)
+        
+        latest_blobs = jpg_blobs[:limit]
         
         def process_blob(blob):
             try:
@@ -145,13 +149,12 @@ async def list_images(
                 return None
         
         loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor(max_workers=min(32, len(jpg_blobs))) as executor:
-            tasks = [loop.run_in_executor(executor, process_blob, blob) for blob in jpg_blobs]
+        with ThreadPoolExecutor(max_workers=min(32, len(latest_blobs))) as executor:
+            tasks = [loop.run_in_executor(executor, process_blob, blob) for blob in latest_blobs]
             results = await asyncio.gather(*tasks, return_exceptions=True)
         
         images = [result for result in results if isinstance(result, ImageData)]
-        images.sort(key=lambda x: x.timestamp, reverse=True)
-        return images[:limit]
+        return images
         
     except Exception as e:
         logger.error(f"Error listing images: {e}")
